@@ -2,6 +2,8 @@ package credits
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -106,5 +108,47 @@ func TestResetTimeFallsBackToDateOnly(t *testing.T) {
 	}
 	if want := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC); !q.ResetsAt.Equal(want) {
 		t.Errorf("ResetsAt = %s, want %s", q.ResetsAt, want)
+	}
+}
+
+// TestGhPathIgnoresPATH is the regression test for the bug that made the built
+// app report "no GitHub token" while `gh auth token` worked in a terminal: a
+// Finder-launched app inherits a minimal PATH that excludes Homebrew, so looking
+// gh up by name alone fails.
+func TestGhPathIgnoresPATH(t *testing.T) {
+	t.Setenv("PATH", "/nonexistent")
+
+	got := ghPath()
+	if got == "" {
+		t.Skip("gh is not installed at any known location on this machine")
+	}
+	if _, err := os.Stat(got); err != nil {
+		t.Errorf("ghPath() = %q, which does not exist: %v", got, err)
+	}
+	if !filepath.IsAbs(got) {
+		t.Errorf("ghPath() = %q, want an absolute path", got)
+	}
+}
+
+func TestOauthTokenFromYAML(t *testing.T) {
+	tests := []struct {
+		name, in, want string
+	}{
+		{
+			name: "gh's file layout",
+			in: "github.com:\n    users:\n        octocat:\n            oauth_token: gho_EXAMPLE\n" +
+				"    git_protocol: ssh\n    user: octocat\n    oauth_token: gho_EXAMPLE\n",
+			want: "gho_EXAMPLE",
+		},
+		{"quoted", "github.com:\n    oauth_token: \"gho_QUOTED\"\n", "gho_QUOTED"},
+		{"single quoted", "github.com:\n    oauth_token: 'gho_SINGLE'\n", "gho_SINGLE"},
+		{"keyring storage, no token in the file", "github.com:\n    git_protocol: ssh\n    user: octocat\n", ""},
+		{"empty", "", ""},
+		{"lookalike key is not matched", "github.com:\n    not_oauth_token: nope\n", ""},
+	}
+	for _, tt := range tests {
+		if got := oauthTokenFromYAML(tt.in); got != tt.want {
+			t.Errorf("%s: oauthTokenFromYAML() = %q, want %q", tt.name, got, tt.want)
+		}
 	}
 }

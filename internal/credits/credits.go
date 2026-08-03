@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -28,9 +29,17 @@ const DefaultURL = "https://api.github.com/copilot_internal/user"
 
 const userAgent = "github-status-tracker/1.0 (+https://github.com)"
 
-// ErrNoToken means we could not find a GitHub token to authenticate with, which
-// is a setup problem rather than a transient failure.
-var ErrNoToken = errors.New("no GitHub token: set GH_TOKEN or run `gh auth login`")
+// keychainService is the item the GitHub CLI creates when it stores credentials
+// in the keyring rather than in a file.
+const keychainService = "gh:github.com"
+
+// ErrNoToken means the GitHub CLI is installed but has no token stored for us to
+// borrow, which is a setup problem rather than a transient failure.
+var ErrNoToken = errors.New("no GitHub token: run `gh auth login`, or set GH_TOKEN")
+
+// ErrNoCLI means the gh binary was not found anywhere we look, so there is no
+// stored token to read in the first place.
+var ErrNoCLI = errors.New("GitHub CLI not found: install gh, or set GH_TOKEN")
 
 // ErrNoQuota means the account has no premium-request quota to report — an
 // unlimited or quota-less plan, rather than a failure.
@@ -164,21 +173,109 @@ func resetTime(r apiResponse) time.Time {
 // Token returns the GitHub token to authenticate with: GH_TOKEN or GITHUB_TOKEN
 // if set, otherwise whatever the GitHub CLI has stored. The value is never
 // logged or surfaced in the UI.
+//
+// The CLI's own store is read three ways, because a menu-bar app launched by
+// Finder or at login inherits a minimal PATH — /usr/bin:/bin and friends — which
+// does not include Homebrew, where gh usually lives. Asking for "gh" by name
+// therefore works in a terminal and fails in the built app.
 func Token(ctx context.Context) (string, error) {
 	for _, key := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
 		if v := strings.TrimSpace(os.Getenv(key)); v != "" {
 			return v, nil
 		}
 	}
-
-	// `gh auth token` reads the keyring or hosts.yml as appropriate, which keeps
-	// this package out of the business of parsing credential stores.
-	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
-	if err != nil {
-		return "", ErrNoToken
+	// Prefer the CLI itself: it knows where it put the token, and reading it
+	// through gh raises no keychain prompt because gh owns that item.
+	if t := tokenFromCLI(ctx); t != "" {
+		return t, nil
 	}
-	if token := strings.TrimSpace(string(out)); token != "" {
-		return token, nil
+	// Then the stores gh writes to, for when the binary can't be found at all.
+	if t := tokenFromKeychain(ctx); t != "" {
+		return t, nil
+	}
+	if t := tokenFromHostsFile(); t != "" {
+		return t, nil
+	}
+	// Say which of the two situations this is: "run gh auth login" is unhelpful
+	// advice for someone who has already done exactly that.
+	if ghPath() == "" {
+		return "", ErrNoCLI
 	}
 	return "", ErrNoToken
+}
+
+// tokenFromCLI runs `gh auth token`, which reads the keyring or the hosts file as
+// appropriate and keeps us out of the business of guessing which.
+func tokenFromCLI(ctx context.Context) string {
+	gh := ghPath()
+	if gh == "" {
+		return ""
+	}
+	out, err := exec.CommandContext(ctx, gh, "auth", "token").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// ghPath locates the gh binary without trusting PATH. The usual Homebrew prefixes
+// come first because that is how gh is nearly always installed on macOS.
+func ghPath() string {
+	candidates := []string{
+		"/opt/homebrew/bin/gh", // Homebrew on Apple silicon
+		"/usr/local/bin/gh",    // Homebrew on Intel, or a manual install
+		"/usr/bin/gh",
+		"/opt/local/bin/gh", // MacPorts
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		candidates = append(candidates, filepath.Join(home, ".local", "bin", "gh"))
+	}
+	for _, p := range candidates {
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+			return p
+		}
+	}
+	// Last resort: a PATH lookup, which is what actually works when the app is
+	// started from a shell rather than by Finder.
+	if p, err := exec.LookPath("gh"); err == nil {
+		return p
+	}
+	return ""
+}
+
+// tokenFromKeychain reads the item gh creates when it stores credentials in the
+// keyring. /usr/bin/security is addressed absolutely for the same PATH reason.
+func tokenFromKeychain(ctx context.Context) string {
+	out, err := exec.CommandContext(ctx, "/usr/bin/security",
+		"find-generic-password", "-s", keychainService, "-w").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// tokenFromHostsFile reads gh's config for the case where it stores the token in
+// a file rather than the keyring. The file is small and the shape is stable, so a
+// line scan avoids taking on a YAML dependency for one field.
+func tokenFromHostsFile() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".config", "gh", "hosts.yml"))
+	if err != nil {
+		return ""
+	}
+	return oauthTokenFromYAML(string(data))
+}
+
+func oauthTokenFromYAML(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		key, value, found := strings.Cut(strings.TrimSpace(line), ":")
+		if !found || strings.TrimSpace(key) != "oauth_token" {
+			continue
+		}
+		return strings.Trim(strings.TrimSpace(value), `"'`)
+	}
+	return ""
 }

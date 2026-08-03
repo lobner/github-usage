@@ -65,6 +65,28 @@ func NeedsApproval() bool {
 	return int(C.loginStatus()) == statusRequiresApproval
 }
 
+// Reconcile makes the system match the recorded intent, and reports whether the
+// app is registered afterwards. Call it at startup when Answer is true.
+//
+// It exists because the system cannot be asked "is this bundle registered?":
+// SMAppService answers "enabled" for one that never was. So when our record says
+// we registered and the system gives that ambiguous answer, register again — a
+// no-op if it was already true, and self-healing when the record is stale or the
+// app has been moved since (macOS remembers the path it was registered from).
+//
+// A status of notRegistered or requiresApproval means someone switched the item
+// off outside the app, most likely in System Settings. That is a decision to
+// respect, not to undo, so it is left alone and reported as not registered.
+func Reconcile() bool {
+	if !Answer() {
+		return false
+	}
+	if int(C.loginStatus()) != statusEnabled {
+		return false
+	}
+	return Enable() == nil
+}
+
 func change(call func(**C.char) C.int) error {
 	var cerr *C.char
 	rc := int(call(&cerr))

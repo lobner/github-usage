@@ -36,6 +36,7 @@ type Incident struct {
 	Title        string
 	URL          string
 	LatestStatus string // newest update's label, e.g. "Investigating", "Resolved"
+	LatestUpdate string // newest update's message, without its label or separator
 	Updated      time.Time
 }
 
@@ -121,9 +122,40 @@ type linkXML struct {
 	Rel  string `xml:"rel,attr"`
 }
 
-// strongRe captures the text of the first <strong>…</strong> in an entry's
-// content, which is the newest update's status label.
-var strongRe = regexp.MustCompile(`(?is)<strong[^>]*>\s*(.*?)\s*</strong>`)
+// An entry's content is one <p> per update, newest first, each shaped like:
+//
+//	<p> <small>Aug <var …> 3</var>, <var …>09:54</var> UTC</small><br>
+//	    <strong>Update</strong> - We are experiencing degraded availability … </p>
+//
+// updateRe takes the first one: its <strong> label and the message that follows,
+// up to the end of that paragraph. strongRe is the fallback for content whose
+// paragraph never closes, where the label is still worth having on its own.
+var (
+	updateRe = regexp.MustCompile(`(?is)<strong[^>]*>\s*(.*?)\s*</strong>(.*?)</p>`)
+	strongRe = regexp.MustCompile(`(?is)<strong[^>]*>\s*(.*?)\s*</strong>`)
+
+	tagRe     = regexp.MustCompile(`(?s)<[^>]*>`)   // links and <var>s inside a message
+	leadSepRe = regexp.MustCompile(`^\s*[-–—:]\s*`) // the " - " between label and message
+	spaceRe   = regexp.MustCompile(`\s+`)           // newlines and runs of spaces in the feed
+)
+
+// latestUpdate pulls the newest update's status label and message out of an
+// entry's content. Either may come back empty if the content is not shaped as
+// expected; callers fall back to the entry title.
+func latestUpdate(content string) (status, message string) {
+	if m := updateRe.FindStringSubmatch(content); m != nil {
+		return clean(m[1]), clean(leadSepRe.ReplaceAllString(tagRe.ReplaceAllString(m[2], ""), ""))
+	}
+	if m := strongRe.FindStringSubmatch(content); m != nil {
+		return clean(m[1]), ""
+	}
+	return "", ""
+}
+
+// clean turns a snippet of feed markup into a single tidy line of text.
+func clean(s string) string {
+	return strings.TrimSpace(spaceRe.ReplaceAllString(html.UnescapeString(s), " "))
+}
 
 // ParseAtom parses the feed body into incidents (in feed order, newest-first).
 func ParseAtom(body []byte) ([]Incident, error) {
@@ -134,16 +166,14 @@ func ParseAtom(body []byte) ([]Incident, error) {
 
 	incidents := make([]Incident, 0, len(f.Entries))
 	for _, e := range f.Entries {
-		status := ""
-		if m := strongRe.FindStringSubmatch(e.Content); m != nil {
-			status = html.UnescapeString(strings.TrimSpace(m[1]))
-		}
+		status, message := latestUpdate(e.Content)
 		updated, _ := time.Parse(time.RFC3339, strings.TrimSpace(e.Updated))
 		incidents = append(incidents, Incident{
 			ID:           strings.TrimSpace(e.ID),
 			Title:        html.UnescapeString(strings.TrimSpace(e.Title)),
 			URL:          pickLink(e.Links),
 			LatestStatus: status,
+			LatestUpdate: message,
 			Updated:      updated,
 		})
 	}

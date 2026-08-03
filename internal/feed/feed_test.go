@@ -4,10 +4,10 @@ import "testing"
 
 // sampleAtom mirrors the real feed: <content> is HTML-escaped (&lt;strong&gt;…),
 // so this also exercises the entity-decoding path. It contains, in order:
-//   1. an ongoing incident   (latest label: Update)
-//   2. a resolved incident   (latest label: Resolved)
-//   3. completed maintenance (latest label: Completed)
-//   4. ongoing maintenance   (latest label: In progress)
+//  1. an ongoing incident   (latest label: Update)
+//  2. a resolved incident   (latest label: Resolved)
+//  3. completed maintenance (latest label: Completed)
+//  4. ongoing maintenance   (latest label: In progress)
 const sampleAtom = `<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>GitHub Status - Incident History</title>
@@ -113,6 +113,64 @@ func TestIsOngoing(t *testing.T) {
 	for status, want := range cases {
 		if got := (Incident{LatestStatus: status}).IsOngoing(); got != want {
 			t.Errorf("IsOngoing(%q) = %v, want %v", status, got, want)
+		}
+	}
+}
+
+// TestLatestUpdate uses the real shape of GitHub's feed content: one <p> per
+// update newest-first, with <var> tags inside the timestamp and entities that the
+// XML decoder has already turned back into markup.
+func TestLatestUpdate(t *testing.T) {
+	const content = `<p> <small>Aug <var data-var='date'> 3</var>, <var data-var='time'>09:54</var> UTC</small><br> ` +
+		`<strong>Update</strong> - We are experiencing degraded availability for chat & agent models in Copilot. ` +
+		`Multiple models are impacted. </p> <p> <small>Aug <var data-var='date'> 3</var>, ` +
+		`<var data-var='time'>09:53</var> UTC</small><br> <strong>Investigating</strong> - ` +
+		`We are investigating reports of degraded performance for Copilot </p>`
+
+	status, message := latestUpdate(content)
+	if status != "Update" {
+		t.Errorf("status = %q, want %q", status, "Update")
+	}
+	want := "We are experiencing degraded availability for chat & agent models in Copilot. Multiple models are impacted."
+	if message != want {
+		t.Errorf("message  = %q\nwant     = %q", message, want)
+	}
+}
+
+func TestLatestUpdateShapes(t *testing.T) {
+	tests := []struct {
+		name, content, status, message string
+	}{
+		{
+			name:    "link inside the message",
+			content: `<p><strong>Scheduled</strong> - See <a href="https://x.test">the notice</a> for details.</p>`,
+			status:  "Scheduled", message: "See the notice for details.",
+		},
+		{
+			name:    "no separator after the label",
+			content: `<p><strong>Resolved</strong> This incident has been resolved.</p>`,
+			status:  "Resolved", message: "This incident has been resolved.",
+		},
+		{
+			name:    "en dash separator",
+			content: `<p><strong>Monitoring</strong> – We are monitoring the fix.</p>`,
+			status:  "Monitoring", message: "We are monitoring the fix.",
+		},
+		{
+			name:    "unclosed paragraph falls back to the label alone",
+			content: `<p><strong>Investigating</strong> - truncated feed`,
+			status:  "Investigating", message: "",
+		},
+		{
+			name:    "no label at all",
+			content: `<p>nothing useful here</p>`,
+			status:  "", message: "",
+		},
+	}
+	for _, tt := range tests {
+		status, message := latestUpdate(tt.content)
+		if status != tt.status || message != tt.message {
+			t.Errorf("%s: got (%q, %q), want (%q, %q)", tt.name, status, message, tt.status, tt.message)
 		}
 	}
 }

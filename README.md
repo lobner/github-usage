@@ -14,8 +14,13 @@ incidents without ever taking up menu-bar width:
 
 <img width="251" height="187" alt="Screenshot 2026-06-08 at 23 47 37" src="https://github.com/user-attachments/assets/a71b25e6-4812-422d-b700-4dd7476fc51b" />
 
-The dropdown lists each ongoing incident (click to open it), plus *Open GitHub
-Status page*, *Refresh now*, the last-checked time, and *Quit*.
+The dropdown lists each ongoing incident as **what its newest update actually
+says** — `Update — We are experiencing degraded availability for chat & agent
+models in Copilot…` — rather than the generic entry title ("Incident with
+Copilot"), which repeats what the icon has already told you. Long messages are cut
+at a word boundary and the tooltip carries the title and the whole update. Click a
+row to open that incident. Below the list: *Open GitHub Status page*, *Refresh
+now*, the last-checked time, *Launch at Login*, and *Quit*.
 
 ## How it decides "ongoing"
 

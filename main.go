@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,6 +37,10 @@ const (
 	maxIncidentItems    = 6
 	blinkInterval       = 700 * time.Millisecond
 	statusPageURL       = "https://www.githubstatus.com"
+
+	// Update messages run long; past this the row is cut and the tooltip carries
+	// the rest, so the menu doesn't grow to the width of a paragraph.
+	incidentLabelMaxLen = 90
 )
 
 var (
@@ -363,12 +368,26 @@ func updateMenu(ongoing []feed.Incident) {
 			continue
 		}
 		inc := ongoing[i]
-		label := inc.Title
-		if inc.LatestStatus != "" {
-			label = inc.LatestStatus + " — " + inc.Title
+
+		// Prefer what the newest update actually says. The entry title is
+		// generic ("Incident with Copilot") and says no more than the icon
+		// already has; the update carries the detail.
+		text := inc.LatestUpdate
+		if text == "" {
+			text = inc.Title
 		}
-		mi.SetTitle("   " + truncate(label, 64))
-		mi.SetTooltip(fmt.Sprintf("%s (%s)", inc.Title, inc.LatestStatus))
+		label := text
+		if inc.LatestStatus != "" {
+			label = inc.LatestStatus + " — " + text
+		}
+		mi.SetTitle("   " + truncate(label, incidentLabelMaxLen))
+
+		// The tooltip carries the title and the whole untruncated update.
+		tip := fmt.Sprintf("%s (%s)", inc.Title, inc.LatestStatus)
+		if inc.LatestUpdate != "" {
+			tip += "\n" + inc.LatestUpdate
+		}
+		mi.SetTooltip(tip)
 		currentURLs[i] = inc.URL
 		mi.Show()
 	}
@@ -425,6 +444,10 @@ func openURL(u string) {
 	_ = exec.Command("open", u).Start()
 }
 
+// truncate shortens s to at most n runes, marking the cut with an ellipsis. It
+// prefers to break at a word boundary, since update messages are prose and
+// stopping mid-word reads as a glitch — but only when that still keeps most of
+// the line, so a single very long word can't shrink the row to nothing.
 func truncate(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
@@ -433,7 +456,17 @@ func truncate(s string, n int) string {
 	if n < 1 {
 		return ""
 	}
-	return string(r[:n-1]) + "…"
+	const trailing = " .,;:-–—"
+	hard := string(r[:n-1])
+	if i := strings.LastIndex(hard, " "); i >= 0 {
+		// LastIndex gives a byte offset, but the "is this still most of the
+		// line?" test has to count runes, or a line of multi-byte characters
+		// clears the bar on byte length alone.
+		if word := strings.TrimRight(hard[:i], trailing); len([]rune(word))*5 >= (n-1)*3 {
+			return word + "…"
+		}
+	}
+	return strings.TrimRight(hard, trailing) + "…"
 }
 
 func envOr(key, def string) string {

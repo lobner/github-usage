@@ -67,8 +67,10 @@ says** — `Update — We are experiencing degraded availability for chat & agen
 models in Copilot…` — rather than the generic entry title ("Incident with
 Copilot"), which repeats what the icon has already told you. Long messages are cut
 at a word boundary and the tooltip carries the title and the whole update. Click a
-row to open that incident. Below the list: *Open GitHub Status page*, *Refresh
-now*, the last-checked time, *Launch at Login*, *About*, and *Quit*.
+row to open that incident. The status headline itself opens
+[githubstatus.com](https://www.githubstatus.com). Below the list: *Open usage
+page*, *Refresh now*, the last-checked time, *Launch at Login*, *About*, and
+*Quit*.
 
 The **About** row names the build — `About GitHub Usage v2.0.0` — and opens that
 version's release notes when clicked. Its tooltip carries the commit, the build

@@ -49,11 +49,28 @@ esac
 rm -rf "$APP"
 mkdir -p "$MACOS"
 
-echo "Building binary…"
+# Stamp the build so the About row can identify itself. git describe gives the
+# tag for a release build, "<tag>-<n>-g<sha>" for anything after it, and appends
+# -dirty for uncommitted changes, so a build always says what it really is.
+VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILT=$(date -u +%Y-%m-%d)
+
+echo "Building binary… ($VERSION)"
 # systray links Cocoa, so cgo must be enabled (it is by default on macOS).
-CGO_ENABLED=1 go build -trimpath -ldflags "-s -w" -o "$MACOS/$EXE" .
+CGO_ENABLED=1 go build -trimpath \
+	-ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.buildDate=$BUILT" \
+	-o "$MACOS/$EXE" .
 
 cp build/Info.plist "$CONTENTS/Info.plist"
+
+# Tell Finder's Get Info the same thing. CFBundle*Version want a plain dotted
+# number, so the tag's numeric part is used and the rest of git describe dropped.
+PLIST_VERSION=$(printf '%s' "${VERSION#v}" | sed -E 's/[^0-9.].*$//; s/\.$//')
+: "${PLIST_VERSION:=0.0.0}"
+for key in CFBundleShortVersionString CFBundleVersion; do
+	/usr/libexec/PlistBuddy -c "Set :$key $PLIST_VERSION" "$CONTENTS/Info.plist" >/dev/null 2>&1 || true
+done
 
 # Ad-hoc sign with our own identifier. The Go linker already applies an ad-hoc
 # signature, but it identifies every binary it ever produces as "a.out" — and

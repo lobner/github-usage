@@ -1,21 +1,33 @@
-// Command githubstatus is a macOS menu-bar app that watches GitHub's incident
-// feed. When an incident appears the menu-bar square blinks red and a
-// Notification Centre banner is posted. Opening the menu acknowledges the
-// incident: the blinking stops, the icon settles on a red notification dot, and
-// the incident titles can be read (and clicked) in the menu itself.
+// Command githubstatus is a macOS menu-bar app with two jobs.
+//
+// It shows how much of your Copilot premium-request allowance is spent, as a
+// percentage in the menu-bar title, with the credit counts and reset date in the
+// menu (see internal/credits).
+//
+// It also watches GitHub's incident feed. When an incident appears the menu-bar
+// square blinks red and a Notification Centre banner is posted. Opening the menu
+// acknowledges the incident: the blinking stops, the icon settles on a red
+// notification dot, and each incident's newest update can be read (and clicked)
+// in the menu itself.
 //
 // On first launch from its .app bundle it offers to open at login, registering
 // itself as a login item if accepted (see internal/login).
 //
 // Environment overrides:
 //
-//	FEED_URL      feed to poll (default https://www.githubstatus.com/history.atom;
-//	              a file:// URL works for offline testing)
-//	POLL_SECONDS  polling interval in seconds (default 60, minimum 10)
+//	FEED_URL       feed to poll (default https://www.githubstatus.com/history.atom;
+//	               a file:// URL works for offline testing)
+//	COPILOT_URL    Copilot entitlement endpoint (default api.github.com/copilot_internal/user;
+//	               a file:// URL works for offline testing)
+//	POLL_SECONDS   polling interval in seconds (default 60, minimum 10)
+//	ALERT_PERCENT  banner when premium-request usage first reaches this % (default 80, 0=off)
+//	GH_TOKEN       GitHub token to use instead of the GitHub CLI's stored one
+//	               (GITHUB_TOKEN also works)
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -26,6 +38,7 @@ import (
 
 	"fyne.io/systray"
 
+	"githubstatus/internal/credits"
 	"githubstatus/internal/feed"
 	"githubstatus/internal/icon"
 	"githubstatus/internal/login"
@@ -34,6 +47,7 @@ import (
 
 const (
 	defaultPollInterval = 60 * time.Second
+	defaultAlertPercent = 80
 	maxIncidentItems    = 6
 	blinkInterval       = 700 * time.Millisecond
 	statusPageURL       = "https://www.githubstatus.com"
@@ -45,16 +59,21 @@ const (
 
 var (
 	feedURL      = envOr("FEED_URL", feed.DefaultURL)
+	copilotURL   = envOr("COPILOT_URL", credits.DefaultURL)
 	pollInterval = pollIntervalFromEnv()
+	alertPercent = alertPercentFromEnv()
 
 	baseIcon     []byte
 	alertIcon    []byte
 	incidentIcon []byte
 
-	mStatus    *systray.MenuItem
-	mIncidents []*systray.MenuItem
-	mLastCheck *systray.MenuItem
-	mLogin     *systray.MenuItem
+	mCredits      *systray.MenuItem
+	mCreditsCount *systray.MenuItem
+	mCreditsReset *systray.MenuItem
+	mStatus       *systray.MenuItem
+	mIncidents    []*systray.MenuItem
+	mLastCheck    *systray.MenuItem
+	mLogin        *systray.MenuItem
 
 	refreshNow = make(chan struct{}, 1)
 
@@ -64,9 +83,11 @@ var (
 	iconAck     = make(chan struct{}, 1)
 
 	// Poll-goroutine-only state.
-	lastOngoing = map[string]bool{}
-	firstRun    = true
-	etag        string
+	lastOngoing     = map[string]bool{}
+	firstRun        = true
+	etag            string
+	creditsAlerted  bool
+	creditsFirstRun = true
 
 	// Shared between the poll goroutine (writer) and click goroutines (readers).
 	mu          sync.Mutex
@@ -83,7 +104,18 @@ func onReady() {
 	incidentIcon = icon.IncidentPNG()
 
 	systray.SetTemplateIcon(baseIcon, baseIcon)
+	systray.SetTitle("…")
 	systray.SetTooltip("GitHub Status — checking…")
+
+	mCredits = systray.AddMenuItem("Premium requests: …", "Copilot premium-request allowance")
+	mCredits.Disable()
+	mCreditsCount = systray.AddMenuItem("", "")
+	mCreditsCount.Disable()
+	mCreditsCount.Hide()
+	mCreditsReset = systray.AddMenuItem("", "")
+	mCreditsReset.Disable()
+	mCreditsReset.Hide()
+	systray.AddSeparator()
 
 	mStatus = systray.AddMenuItem("Checking GitHub status…", "")
 	mStatus.Disable()
@@ -160,7 +192,20 @@ func onExit() {}
 // offer: when the user has already answered either way, when the binary is not
 // running from its .app bundle, or on a macOS without SMAppService.
 func offerLaunchAtLogin() {
-	if login.BundlePath() == "" || !login.Supported() || login.Answered() {
+	if login.BundlePath() == "" || !login.Supported() {
+		return
+	}
+
+	// Already answered: don't ask again, but do make the system match what we
+	// recorded — see login.Reconcile for why that can't be read back instead.
+	if login.Answered() {
+		if login.Answer() {
+			if login.Reconcile() {
+				mLogin.Check()
+			} else {
+				mLogin.Uncheck()
+			}
+		}
 		return
 	}
 
@@ -287,17 +332,121 @@ func iconLoop() {
 }
 
 func pollLoop() {
-	check() // immediate first check
+	poll() // immediate first check
 	t := time.NewTicker(pollInterval)
 	defer t.Stop()
 	for {
 		select {
 		case <-t.C:
-			check()
+			poll()
 		case <-refreshNow:
-			check()
+			poll()
 		}
 	}
+}
+
+func poll() {
+	check()
+	checkCredits()
+}
+
+// checkCredits refreshes the Copilot premium-request allowance: the percentage in
+// the menu bar and the three rows at the top of the menu.
+func checkCredits() {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	q, err := credits.Fetch(ctx, copilotURL)
+	switch {
+	case errors.Is(err, credits.ErrNoQuota):
+		// Unlimited or quota-less plan: nothing to meter, so stay out of the bar.
+		systray.SetTitle("")
+		mCredits.SetTitle("Premium requests: unlimited on this plan")
+		mCreditsCount.Hide()
+		mCreditsReset.Hide()
+		return
+	case err != nil:
+		systray.SetTitle("⚠")
+		mCredits.SetTitle("⚠  " + err.Error())
+		mCreditsCount.Hide()
+		mCreditsReset.Hide()
+		return
+	}
+
+	systray.SetTitle(strconv.Itoa(q.PercentUsed) + "%")
+	mCredits.SetTitle(fmt.Sprintf("Premium requests: %d%% used", q.PercentUsed))
+	mCredits.SetTooltip(fmt.Sprintf("%s of %s premium-request credits used on the %s plan",
+		thousands(q.Used), thousands(q.Entitlement), q.Plan))
+
+	count := fmt.Sprintf("   %s of %s credits", thousands(q.Used), thousands(q.Entitlement))
+	if q.Overage > 0 {
+		count += fmt.Sprintf("  (+%s over)", thousands(q.Overage))
+	}
+	mCreditsCount.SetTitle(count)
+	mCreditsCount.Show()
+
+	if q.ResetsAt.IsZero() {
+		mCreditsReset.Hide()
+	} else {
+		mCreditsReset.SetTitle("   resets " + humanizeReset(q.ResetsAt))
+		mCreditsReset.Show()
+	}
+
+	notifyCreditsThreshold(q)
+}
+
+// notifyCreditsThreshold fires a banner the first time usage reaches
+// alertPercent, re-arming once it drops back below (after a monthly reset). The
+// first poll only establishes a baseline, so launching while already high does
+// not fire one.
+func notifyCreditsThreshold(q credits.Quota) {
+	if alertPercent <= 0 {
+		return
+	}
+	high := q.PercentUsed >= alertPercent
+
+	if !creditsFirstRun && high && !creditsAlerted {
+		_ = notify.Banner("GitHub Copilot",
+			fmt.Sprintf("%d%% of premium requests used (%s of %s)",
+				q.PercentUsed, thousands(q.Used), thousands(q.Entitlement)))
+	}
+	creditsAlerted = high
+	creditsFirstRun = false
+}
+
+// humanizeReset renders a reset time relatively when it is close and as a date
+// when it is not — the premium-request window is monthly, so most of the time
+// this reads "resets on 1 Sep".
+func humanizeReset(t time.Time) string {
+	// Round rather than truncate, so a reset 24m59s away doesn't read "in 24m".
+	// Rounding first also keeps the branches consistent: 59m40s becomes an hour
+	// and takes the "1h 0m" arm rather than printing "in 60m".
+	d := time.Until(t).Round(time.Minute)
+	switch {
+	case d <= 0:
+		return "now"
+	case d < time.Hour:
+		return fmt.Sprintf("in %dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("in %dh %dm", int(d.Hours()), int(d.Minutes())%60)
+	case d < 7*24*time.Hour:
+		return "on " + t.Local().Format("Mon 2 Jan")
+	default:
+		return "on " + t.Local().Format("2 Jan")
+	}
+}
+
+// thousands groups an integer with thin separators, so 13500 reads as 13,500.
+func thousands(n int) string {
+	s := strconv.Itoa(n)
+	sign := ""
+	if strings.HasPrefix(s, "-") {
+		sign, s = "-", s[1:]
+	}
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return sign + s
 }
 
 func check() {
@@ -483,4 +632,13 @@ func pollIntervalFromEnv() time.Duration {
 		}
 	}
 	return defaultPollInterval
+}
+
+func alertPercentFromEnv() int {
+	if v := os.Getenv("ALERT_PERCENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 100 {
+			return n
+		}
+	}
+	return defaultAlertPercent
 }

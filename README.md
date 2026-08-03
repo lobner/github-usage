@@ -68,7 +68,15 @@ models in Copilot…` — rather than the generic entry title ("Incident with
 Copilot"), which repeats what the icon has already told you. Long messages are cut
 at a word boundary and the tooltip carries the title and the whole update. Click a
 row to open that incident. Below the list: *Open GitHub Status page*, *Refresh
-now*, the last-checked time, *Launch at Login*, and *Quit*.
+now*, the last-checked time, *Launch at Login*, *About*, and *Quit*.
+
+The **About** row names the build — `About GitHub Usage v2.0.0` — and opens that
+version's release notes when clicked. Its tooltip carries the commit, the build
+date and the architecture, which is what a bug report actually needs: the released
+archives are Apple silicon only, and these builds are unsigned, so "which build is
+that?" is otherwise unanswerable. `make-app.sh` stamps all three in from
+`git describe`, so an untagged build says `v1.2.0-3-g1a2b3c4` and a dirty tree says
+`-dirty`; `go run .` says `dev`.
 
 ## How it decides "ongoing"
 

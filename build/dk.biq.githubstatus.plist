@@ -13,7 +13,7 @@
 	<array>
 		<string>/usr/bin/open</string>
 		<string>-W</string>
-		<string>/Applications/GitHub Status.app</string>
+		<string>/Applications/GitHub Usage.app</string>
 	</array>
 
 	<!-- Start automatically at login. Deliberately NO KeepAlive: choosing Quit

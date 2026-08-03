@@ -20,7 +20,10 @@ import (
 )
 
 // stateDir is the Application Support directory holding our one bit of state,
-// whose contents is one of the answer constants below.
+// whose contents is one of the answer constants below. It is the bundle id, which
+// still says githubstatus because the app was renamed to GitHub Usage without
+// changing its identity to macOS — see build/Info.plist. Renaming this directory
+// would silently discard everyone's answer and re-prompt them.
 const (
 	stateDir         = "dk.biq.githubstatus"
 	answerRegistered = "registered"
@@ -28,7 +31,7 @@ const (
 )
 
 // BundlePath returns the .app bundle the running executable lives in, or "" when
-// the binary is not bundled (`go run .`, `go build && ./githubstatus`). Login
+// the binary is not bundled (`go run .`, `go build && ./githubusage`). Login
 // items are bundles, so there is nothing to register in that case.
 func BundlePath() string {
 	exe, err := os.Executable()
@@ -43,7 +46,7 @@ func BundlePath() string {
 }
 
 // bundleFor maps an executable path to its enclosing .app, or "" if it has the
-// wrong shape: …/GitHub Status.app/Contents/MacOS/githubstatus.
+// wrong shape: …/GitHub Usage.app/Contents/MacOS/githubusage.
 func bundleFor(exe string) string {
 	macOS := filepath.Dir(exe)
 	contents := filepath.Dir(macOS)

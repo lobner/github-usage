@@ -1,4 +1,4 @@
-module githubstatus
+module githubusage
 
 go 1.25.11
 

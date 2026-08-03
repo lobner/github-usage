@@ -1,4 +1,4 @@
-# GitHub Status — macOS menu-bar tracker
+# GitHub Usage — macOS menu-bar meter
 
 A tiny menu-bar app with two jobs: it shows how much of your **Copilot
 premium-request allowance** is spent, and it tells you when **GitHub is having an
@@ -82,7 +82,7 @@ go run .
 ./build/make-app.sh
 ```
 
-`make-app.sh` produces `GitHub Status.app` with `LSUIElement=true`, so it runs as a
+`make-app.sh` produces `GitHub Usage.app` with `LSUIElement=true`, so it runs as a
 menu-bar-only agent (no Dock icon) and survives closing the terminal. After
 building it asks *"Install to /Applications and relaunch?"*, which quits whichever
 copy is running (the installed one or one launched from this repo — they share a
@@ -106,7 +106,7 @@ bundle by the path it was registered from — see below.
 ## Launch at login
 
 The app offers this itself: the first time you run it from the `.app` bundle it
-asks *"Launch GitHub Status at login?"*, and choosing **Launch at Login**
+asks *"Launch GitHub Usage at login?"*, and choosing **Launch at Login**
 registers the bundle as a login item via `SMAppService` (macOS 13+). It then
 appears under System Settings → General → Login Items → **Open at Login**, and
 you can switch it off there.
@@ -120,6 +120,12 @@ The offer is made once, either way. The answer is remembered in
 `~/Library/Application Support/dk.biq.githubstatus/launch-at-login`; delete that
 file to be asked again. It is also skipped when the binary isn't running from a
 bundle (`go run .`), since login items are bundles.
+
+That path still says `githubstatus` on purpose. The app was called **GitHub
+Status** until v1.2.0, and the bundle id is its identity to macOS: keeping
+`dk.biq.githubstatus` is what lets the existing *Open at Login* registration and
+your recorded answer survive the rename. Changing it would orphan the login item
+and re-prompt everyone, for a string nobody sees.
 
 Each launch also *reconciles*: if the record says registered, the app registers
 again. That is a no-op when it already is, and it repairs the case where the login
@@ -151,7 +157,7 @@ Three notes on the mechanics:
 To set it up by hand instead:
 
 - **Login Items** — System Settings → General → Login Items → add
-  `GitHub Status.app`; or
+  `GitHub Usage.app`; or
 - **LaunchAgent** — copy `build/dk.biq.githubstatus.plist` to
   `~/Library/LaunchAgents/`, fix the path inside if the app isn't in
   `/Applications`, then `launchctl load ~/Library/LaunchAgents/dk.biq.githubstatus.plist`.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build "GitHub Status.app" — a no-dock menu-bar agent (LSUIElement) — and offer
+# Build "GitHub Usage.app" — a no-dock menu-bar agent (LSUIElement) — and offer
 # to install it to /Applications.
 #
 # Usage: ./build/make-app.sh [--install | --no-install]
@@ -14,10 +14,21 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-APP="GitHub Status.app"
-EXE="githubstatus"
-BUNDLE_ID="dk.biq.githubstatus"
+APP="GitHub Usage.app"
+EXE="githubusage"
 DEST="/Applications"
+
+# The bundle id deliberately still says githubstatus: it is the app's identity to
+# macOS, so keeping it means the existing "Open at Login" registration and the
+# state in ~/Library/Application Support survive the rename to GitHub Usage.
+# Changing it would orphan the login item and re-prompt everyone. Don't "fix" it.
+BUNDLE_ID="dk.biq.githubstatus"
+
+# The app was called GitHub Status until v1.2.0. Its bundle and process are still
+# handled here so upgrading is one command; drop this once nobody is on an older
+# build.
+LEGACY_APP="GitHub Status.app"
+LEGACY_EXE="githubstatus"
 
 CONTENTS="$APP/Contents"
 MACOS="$CONTENTS/MacOS"
@@ -59,7 +70,7 @@ echo "Built \"${APP}\""
 # Match the process by executable name, not with pgrep -f: a full-command-line
 # match also hits any shell whose arguments happen to mention the bundle path,
 # including the one running this script.
-running() { pgrep -x "$EXE" >/dev/null 2>&1; }
+running() { pgrep -x "$EXE" >/dev/null 2>&1 || pgrep -x "$LEGACY_EXE" >/dev/null 2>&1; }
 
 # wait_gone polls for up to 5 s, since quitting is asynchronous.
 wait_gone() {
@@ -70,6 +81,24 @@ wait_gone() {
 	return 1
 }
 
+# remove_legacy deletes the pre-rename bundle once its replacement is installed,
+# so you aren't left with two menu-bar icons. It checks the bundle id first and
+# only ever touches that one path, rather than trusting the name alone.
+remove_legacy() {
+	local old="$DEST/$LEGACY_APP"
+	[[ -d "$old" ]] || return 0
+
+	local id
+	id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$old/Contents/Info.plist" 2>/dev/null || true)
+	if [[ "$id" != "$BUNDLE_ID" ]]; then
+		echo "  leaving \"$old\" alone: its bundle id is \"${id:-unknown}\", not ours" >&2
+		return 0
+	fi
+
+	echo "Removing the superseded \"$old\" (same app, previous name)…"
+	rm -rf "$old"
+}
+
 quit_running() {
 	running || return 0
 	echo "Quitting the running app…"
@@ -78,6 +107,7 @@ quit_running() {
 
 	echo "  it did not quit on its own; terminating it"
 	pkill -x "$EXE" >/dev/null 2>&1 || true
+	pkill -x "$LEGACY_EXE" >/dev/null 2>&1 || true
 	wait_gone && return 0
 
 	echo "  still running — quit it from its menu, then re-run this script" >&2
@@ -101,6 +131,7 @@ case "${answer:-y}" in
 		echo "Could not write to ${DEST} — copy it yourself, or re-run with sudo." >&2
 		exit 1
 	fi
+	remove_legacy
 	open "${DEST}/${APP}"
 	echo "Installed and relaunched \"${DEST}/${APP}\""
 	;;

@@ -4,6 +4,9 @@
 // incident: the blinking stops, the icon settles on a red notification dot, and
 // the incident titles can be read (and clicked) in the menu itself.
 //
+// On first launch from its .app bundle it offers to open at login, registering
+// itself as a login item if accepted (see internal/login).
+//
 // Environment overrides:
 //
 //	FEED_URL      feed to poll (default https://www.githubstatus.com/history.atom;
@@ -24,6 +27,7 @@ import (
 
 	"githubstatus/internal/feed"
 	"githubstatus/internal/icon"
+	"githubstatus/internal/login"
 	"githubstatus/internal/notify"
 )
 
@@ -45,6 +49,7 @@ var (
 	mStatus    *systray.MenuItem
 	mIncidents []*systray.MenuItem
 	mLastCheck *systray.MenuItem
+	mLogin     *systray.MenuItem
 
 	refreshNow = make(chan struct{}, 1)
 
@@ -98,6 +103,14 @@ func onReady() {
 	mLastCheck = systray.AddMenuItem("", "")
 	mLastCheck.Disable()
 	systray.AddSeparator()
+
+	mLogin = systray.AddMenuItemCheckbox("Launch at Login",
+		"Open GitHub Status automatically when you log in", login.Enabled())
+	if login.BundlePath() == "" || !login.Supported() {
+		mLogin.Hide() // nothing to register: not a bundle, or macOS 12 or earlier
+	}
+	systray.AddSeparator()
+
 	mQuit := systray.AddMenuItem("Quit", "Quit GitHub Status")
 
 	go func() {
@@ -108,6 +121,11 @@ func onReady() {
 	go func() {
 		for range mRefresh.ClickedCh {
 			triggerRefresh()
+		}
+	}()
+	go func() {
+		for range mLogin.ClickedCh {
+			toggleLaunchAtLogin()
 		}
 	}()
 	go func() {
@@ -127,9 +145,74 @@ func onReady() {
 
 	go iconLoop()
 	go pollLoop()
+	go offerLaunchAtLogin()
 }
 
 func onExit() {}
+
+// offerLaunchAtLogin asks — once — whether the app should open at login, and
+// registers it as a login item if so. It stays quiet when there is nothing to
+// offer: when the user has already answered either way, when the binary is not
+// running from its .app bundle, or on a macOS without SMAppService.
+func offerLaunchAtLogin() {
+	if login.BundlePath() == "" || !login.Supported() || login.Answered() {
+		return
+	}
+
+	yes, err := notify.Confirm(
+		"Launch GitHub Status at login?",
+		"GitHub Status can start automatically when you log in, so it keeps watching for incidents without you having to open it.",
+		"Launch at Login", "Not Now")
+	if err != nil {
+		return // the dialog itself failed; try again next launch rather than guess
+	}
+	if !yes {
+		_ = login.RecordAnswer(false)
+		return
+	}
+
+	if err := login.Enable(); err != nil {
+		// Don't record the answer, so the offer is made again next launch.
+		_ = notify.Banner("GitHub Status", "Could not open at login: "+err.Error())
+		return
+	}
+	_ = login.RecordAnswer(true)
+	mLogin.Check()
+	warnIfNeedsApproval()
+}
+
+// toggleLaunchAtLogin flips the Launch at Login checkbox. The checkbox is only
+// ticked once the change has actually gone through, so a failure leaves the menu
+// showing what is really the case.
+func toggleLaunchAtLogin() {
+	if mLogin.Checked() {
+		if err := login.Disable(); err != nil {
+			_ = notify.Banner("GitHub Status", "Could not stop opening at login: "+err.Error())
+			return
+		}
+		_ = login.RecordAnswer(false)
+		mLogin.Uncheck()
+		return
+	}
+
+	if err := login.Enable(); err != nil {
+		_ = notify.Banner("GitHub Status", "Could not open at login: "+err.Error())
+		return
+	}
+	_ = login.RecordAnswer(true)
+	mLogin.Check()
+	warnIfNeedsApproval()
+}
+
+// warnIfNeedsApproval covers the case where the user has previously switched the
+// login item off in System Settings: registering succeeds, but macOS keeps it
+// held back until they switch it on there.
+func warnIfNeedsApproval() {
+	if login.NeedsApproval() {
+		_ = notify.Banner("GitHub Status",
+			"Switch GitHub Status on under System Settings → General → Login Items to finish enabling it.")
+	}
+}
 
 // iconUpdate is what the latest poll saw: whether anything is ongoing, and
 // whether any of it is new since the previous poll.

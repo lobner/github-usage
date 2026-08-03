@@ -27,10 +27,16 @@ out of the menu bar entirely.
 The numbers come from `https://api.github.com/copilot_internal/user`, the internal
 endpoint the editor extensions call for "premium requests remaining" — there is no
 documented API for this, so treat the shape as observed rather than contractual.
-It authenticates with the token the **GitHub CLI** has already stored, via
-`gh auth token`, or with `GH_TOKEN`/`GITHUB_TOKEN` if either is set; it never
-writes, refreshes, or logs a token. Without a usable token the title shows `⚠` and
-the row explains what to do.
+It authenticates with the token the **GitHub CLI** has already stored, or with
+`GH_TOKEN`/`GITHUB_TOKEN` if either is set; it never writes, refreshes, or logs a
+token. Without a usable token the title shows `⚠` and the row says which of the
+two problems it is — no CLI, or a CLI with nothing stored.
+
+The CLI's token is looked for in three ways, in order: `gh auth token` with `gh`
+found at an absolute path, then the keychain item `gh:github.com`, then
+`~/.config/gh/hosts.yml`. That matters because an app launched by Finder or at
+login inherits a minimal `PATH` that excludes Homebrew — so asking for `gh` by
+name alone works in a terminal and fails in the built app.
 
 ## Incidents
 

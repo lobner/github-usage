@@ -1,7 +1,40 @@
 # GitHub Status — macOS menu-bar tracker
 
-A tiny menu-bar app that watches GitHub's incident feed and surfaces ongoing
-incidents without ever taking up menu-bar width:
+A tiny menu-bar app with two jobs: it shows how much of your **Copilot
+premium-request allowance** is spent, and it tells you when **GitHub is having an
+incident**.
+
+```
+ [icon] 6%          ← premium requests used this period; the icon blinks red on an incident
+```
+
+## Copilot premium requests
+
+The menu-bar title is the percentage of your premium-request credits used in the
+current billing period, and the top of the dropdown spells it out:
+
+```
+Premium requests: 6% used
+   855 of 13,500 credits
+   resets on 1 Sep
+```
+
+Once usage first reaches `ALERT_PERCENT` (80% by default) you get a Notification
+Centre banner, re-armed after each monthly reset. On a plan with no metered
+premium requests the row reads *unlimited on this plan* and the percentage stays
+out of the menu bar entirely.
+
+The numbers come from `https://api.github.com/copilot_internal/user`, the internal
+endpoint the editor extensions call for "premium requests remaining" — there is no
+documented API for this, so treat the shape as observed rather than contractual.
+It authenticates with the token the **GitHub CLI** has already stored, via
+`gh auth token`, or with `GH_TOKEN`/`GITHUB_TOKEN` if either is set; it never
+writes, refreshes, or logs a token. Without a usable token the title shows `⚠` and
+the row explains what to do.
+
+## Incidents
+
+Ongoing incidents are signalled in the icon, never by growing the menu bar:
 
 - **All clear** → a plain monochrome square (stays out of the way).
 - **New incident** → the square **blinks red** until you look at it.
@@ -12,7 +45,7 @@ incidents without ever taking up menu-bar width:
 - A **Notification Centre banner** when a *new* incident first appears while the
   app is running.
 
-<img width="251" height="187" alt="Screenshot 2026-06-08 at 23 47 37" src="https://github.com/user-attachments/assets/a71b25e6-4812-422d-b700-4dd7476fc51b" />
+<img width="570" alt="The dropdown: premium-request credits, one ongoing incident with its newest update, and Launch at Login" src="docs/menu.png" />
 
 The dropdown lists each ongoing incident as **what its newest update actually
 says** — `Update — We are experiencing degraded availability for chat & agent
@@ -39,20 +72,30 @@ Requires Go 1.22+ (this repo pins `golang 1.25.11` via `.tool-versions`).
 # Run in the foreground (Ctrl-C to stop):
 go run .
 
-# Or build a no-dock .app you can double-click / add to Login Items:
+# Build the .app, and let it offer to install:
 ./build/make-app.sh
-open "GitHub Status.app"
 ```
 
-`make-app.sh` produces `GitHub Status.app` with `LSUIElement=true`, so it runs
-as a menu-bar-only agent (no Dock icon) and survives closing the terminal.
+`make-app.sh` produces `GitHub Status.app` with `LSUIElement=true`, so it runs as a
+menu-bar-only agent (no Dock icon) and survives closing the terminal. After
+building it asks *"Install to /Applications and relaunch?"*, which quits whichever
+copy is running (the installed one or one launched from this repo — they share a
+bundle id), replaces the bundle, and reopens it from `/Applications`. Pass
+`--install` or `--no-install` to answer up front; with no terminal on stdin it
+builds and stops rather than touching `/Applications`.
+
+Installing this way is worth preferring, because *Launch at Login* records the
+bundle by the path it was registered from — see below.
 
 ## Configuration
 
-| Env var        | Default                                       | Meaning                                  |
-| -------------- | --------------------------------------------- | ---------------------------------------- |
-| `FEED_URL`     | `https://www.githubstatus.com/history.atom`   | Feed to poll. A `file://…` path also works (handy for testing). |
-| `POLL_SECONDS` | `60`                                          | Polling interval in seconds (min 10).    |
+| Env var         | Default                                       | Meaning                                  |
+| --------------- | --------------------------------------------- | ---------------------------------------- |
+| `FEED_URL`      | `https://www.githubstatus.com/history.atom`   | Incident feed to poll. A `file://…` path also works (handy for testing). |
+| `COPILOT_URL`   | `https://api.github.com/copilot_internal/user` | Copilot entitlement endpoint. A `file://…` path also works. |
+| `POLL_SECONDS`  | `60`                                          | Polling interval in seconds (min 10).    |
+| `ALERT_PERCENT` | `80`                                          | Banner when premium-request usage first reaches this %. `0` disables it. |
+| `GH_TOKEN`      | —                                             | Token to use instead of the GitHub CLI's stored one. `GITHUB_TOKEN` also works. |
 
 ## Launch at login
 
@@ -72,7 +115,22 @@ The offer is made once, either way. The answer is remembered in
 file to be asked again. It is also skipped when the binary isn't running from a
 bundle (`go run .`), since login items are bundles.
 
-Two notes on why it uses `SMAppService` rather than a LaunchAgent:
+Each launch also *reconciles*: if the record says registered, the app registers
+again. That is a no-op when it already is, and it repairs the case where the login
+item was dropped — which happens whenever the bundle is replaced, as
+`make-app.sh --install` does. If macOS instead reports the item as switched off,
+that is left alone: it means someone turned it off in System Settings, and the
+checkbox will show unticked until you tick it again.
+
+Three notes on the mechanics:
+
+- **The bundle is ad-hoc signed with its own identifier.** The Go linker already
+  ad-hoc signs, but it calls every binary it produces `a.out`, and macOS keys
+  login items by signing identity — so two unsigned Go apps look like one item and
+  registering either one evicts the other's *Open at Login* entry. `make-app.sh`
+  runs `codesign --sign - --identifier <bundle id>` to give each build a distinct,
+  stable identity. That buys identity, not trust: these builds are still not
+  Developer ID signed and not notarised.
 
 - A launchd job in `~/Library/LaunchAgents` also starts the app at login, but
   macOS classifies it as a *background item*, so it shows up under **App
@@ -96,6 +154,7 @@ To set it up by hand instead:
 
 ```
 main.go                 systray wiring, poll loop, menu, notifications
+internal/credits/       Copilot premium-request quota from copilot_internal/user
 internal/feed/          fetch (conditional GET) + parse Atom + Ongoing() filter
 internal/icon/          programmatic icons (base template, red blink, red-dot incident)
 internal/login/         open-at-login registration via SMAppService (cgo)

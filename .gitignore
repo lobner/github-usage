@@ -5,8 +5,7 @@
 *.app/
 
 # Compiled binaries
-/githubstatus
-/githus-status-tracker
+/githubusage
 *.test
 *.out
 

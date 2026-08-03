@@ -28,7 +28,7 @@ import (
 // DefaultURL is GitHub's incident-history Atom feed.
 const DefaultURL = "https://www.githubstatus.com/history.atom"
 
-const userAgent = "githus-status-tracker/1.0 (+https://github.com)"
+const userAgent = "github-usage/1.0 (+https://github.com)"
 
 // Incident is a single incident parsed from one Atom <entry>.
 type Incident struct {

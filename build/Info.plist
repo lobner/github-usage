@@ -3,9 +3,14 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>GitHub Status</string>
+	<string>GitHub Usage</string>
 	<key>CFBundleDisplayName</key>
-	<string>GitHub Status</string>
+	<string>GitHub Usage</string>
+	<!-- Deliberately still githubstatus, though the app is now called GitHub
+	     Usage. The bundle id is the app's identity to macOS: keeping it means the
+	     existing "Open at Login" registration and the state under
+	     ~/Library/Application Support survive the rename. Changing it would
+	     orphan the login item and re-prompt every user. -->
 	<key>CFBundleIdentifier</key>
 	<string>dk.biq.githubstatus</string>
 	<key>CFBundleVersion</key>
@@ -15,7 +20,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleExecutable</key>
-	<string>githubstatus</string>
+	<string>githubusage</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>11.0</string>
 	<!-- Agent app: lives only in the menu bar, no Dock icon, no app switcher. -->

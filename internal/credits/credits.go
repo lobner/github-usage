@@ -27,7 +27,7 @@ import (
 // DefaultURL is GitHub's internal Copilot entitlement endpoint.
 const DefaultURL = "https://api.github.com/copilot_internal/user"
 
-const userAgent = "github-status-tracker/1.0 (+https://github.com)"
+const userAgent = "github-usage/1.0 (+https://github.com)"
 
 // keychainService is the item the GitHub CLI creates when it stores credentials
 // in the keyring rather than in a file.

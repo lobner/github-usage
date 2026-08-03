@@ -11,12 +11,12 @@ func TestBundleFor(t *testing.T) {
 		exe  string
 		want string
 	}{
-		{"/Applications/GitHub Status.app/Contents/MacOS/githubstatus", "/Applications/GitHub Status.app"},
+		{"/Applications/GitHub Usage.app/Contents/MacOS/githubusage", "/Applications/GitHub Usage.app"},
 		{"/Users/x/tools/My App.app/Contents/MacOS/bin", "/Users/x/tools/My App.app"},
-		{"/Users/x/workspace/github-status-tracker/githubstatus", ""}, // plain `go build`
-		{"/tmp/go-build123/b001/exe/main", ""},                        // `go run .`
-		{"/Applications/Thing.app/Contents/Resources/githubstatus", ""},
-		{"/Applications/Thing/Contents/MacOS/githubstatus", ""}, // not a bundle
+		{"/Users/x/workspace/github-usage/githubusage", ""}, // plain `go build`
+		{"/tmp/go-build123/b001/exe/main", ""},              // `go run .`
+		{"/Applications/Thing.app/Contents/Resources/githubusage", ""},
+		{"/Applications/Thing/Contents/MacOS/githubusage", ""}, // not a bundle
 	}
 	for _, tt := range tests {
 		if got := bundleFor(tt.exe); got != tt.want {

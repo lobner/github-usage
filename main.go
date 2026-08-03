@@ -1,4 +1,4 @@
-// Command githubstatus is a macOS menu-bar app with two jobs.
+// Command githubusage is a macOS menu-bar app with two jobs.
 //
 // It shows how much of your Copilot premium-request allowance is spent, as a
 // percentage in the menu-bar title, with the credit counts and reset date in the
@@ -38,11 +38,11 @@ import (
 
 	"fyne.io/systray"
 
-	"githubstatus/internal/credits"
-	"githubstatus/internal/feed"
-	"githubstatus/internal/icon"
-	"githubstatus/internal/login"
-	"githubstatus/internal/notify"
+	"githubusage/internal/credits"
+	"githubusage/internal/feed"
+	"githubusage/internal/icon"
+	"githubusage/internal/login"
+	"githubusage/internal/notify"
 )
 
 const (
@@ -105,7 +105,7 @@ func onReady() {
 
 	systray.SetTemplateIcon(baseIcon, baseIcon)
 	systray.SetTitle("…")
-	systray.SetTooltip("GitHub Status — checking…")
+	systray.SetTooltip("GitHub Usage — checking…")
 
 	mCredits = systray.AddMenuItem("Premium requests: …", "Copilot premium-request allowance")
 	mCredits.Disable()
@@ -142,13 +142,13 @@ func onReady() {
 	systray.AddSeparator()
 
 	mLogin = systray.AddMenuItemCheckbox("Launch at Login",
-		"Open GitHub Status automatically when you log in", login.Enabled())
+		"Open GitHub Usage automatically when you log in", login.Enabled())
 	if login.BundlePath() == "" || !login.Supported() {
 		mLogin.Hide() // nothing to register: not a bundle, or macOS 12 or earlier
 	}
 	systray.AddSeparator()
 
-	mQuit := systray.AddMenuItem("Quit", "Quit GitHub Status")
+	mQuit := systray.AddMenuItem("Quit", "Quit GitHub Usage")
 
 	go func() {
 		for range mOpenPage.ClickedCh {
@@ -210,8 +210,8 @@ func offerLaunchAtLogin() {
 	}
 
 	yes, err := notify.Confirm(
-		"Launch GitHub Status at login?",
-		"GitHub Status can start automatically when you log in, so it keeps watching for incidents without you having to open it.",
+		"Launch GitHub Usage at login?",
+		"GitHub Usage can start automatically when you log in, so it keeps watching for incidents without you having to open it.",
 		"Launch at Login", "Not Now")
 	if err != nil {
 		return // the dialog itself failed; try again next launch rather than guess
@@ -223,7 +223,7 @@ func offerLaunchAtLogin() {
 
 	if err := login.Enable(); err != nil {
 		// Don't record the answer, so the offer is made again next launch.
-		_ = notify.Banner("GitHub Status", "Could not open at login: "+err.Error())
+		_ = notify.Banner("GitHub Usage", "Could not open at login: "+err.Error())
 		return
 	}
 	_ = login.RecordAnswer(true)
@@ -237,7 +237,7 @@ func offerLaunchAtLogin() {
 func toggleLaunchAtLogin() {
 	if mLogin.Checked() {
 		if err := login.Disable(); err != nil {
-			_ = notify.Banner("GitHub Status", "Could not stop opening at login: "+err.Error())
+			_ = notify.Banner("GitHub Usage", "Could not stop opening at login: "+err.Error())
 			return
 		}
 		_ = login.RecordAnswer(false)
@@ -246,7 +246,7 @@ func toggleLaunchAtLogin() {
 	}
 
 	if err := login.Enable(); err != nil {
-		_ = notify.Banner("GitHub Status", "Could not open at login: "+err.Error())
+		_ = notify.Banner("GitHub Usage", "Could not open at login: "+err.Error())
 		return
 	}
 	_ = login.RecordAnswer(true)
@@ -259,8 +259,8 @@ func toggleLaunchAtLogin() {
 // held back until they switch it on there.
 func warnIfNeedsApproval() {
 	if login.NeedsApproval() {
-		_ = notify.Banner("GitHub Status",
-			"Switch GitHub Status on under System Settings → General → Login Items to finish enabling it.")
+		_ = notify.Banner("GitHub Usage",
+			"Switch GitHub Usage on under System Settings → General → Login Items to finish enabling it.")
 	}
 }
 
@@ -459,7 +459,7 @@ func check() {
 	if err != nil {
 		// Keep the last known state; just note that the refresh failed.
 		mLastCheck.SetTitle("Last check failed " + now.Format("15:04:05"))
-		systray.SetTooltip("GitHub Status — offline (tried " + now.Format("15:04") + ")")
+		systray.SetTooltip("GitHub Usage — offline (tried " + now.Format("15:04") + ")")
 		return
 	}
 	if notModified {
@@ -492,7 +492,7 @@ func updateMenu(ongoing []feed.Incident) {
 	}
 
 	if len(ongoing) == 0 {
-		systray.SetTooltip("GitHub Status — all systems operational")
+		systray.SetTooltip("GitHub Usage — all systems operational")
 		mStatus.SetTitle("✓  All systems operational")
 		for _, mi := range mIncidents {
 			mi.Hide()
@@ -500,7 +500,7 @@ func updateMenu(ongoing []feed.Incident) {
 		return
 	}
 
-	systray.SetTooltip(fmt.Sprintf("GitHub Status — %d ongoing incident(s)", len(ongoing)))
+	systray.SetTooltip(fmt.Sprintf("GitHub Usage — %d ongoing incident(s)", len(ongoing)))
 
 	status := fmt.Sprintf("●  %d ongoing incidents", len(ongoing))
 	if len(ongoing) == 1 {
@@ -562,7 +562,7 @@ func notifyNew(ongoing []feed.Incident) bool {
 		}
 	}
 	if !firstRun && len(cur) == 0 && len(lastOngoing) > 0 {
-		_ = notify.Banner("GitHub Status", "All incidents resolved")
+		_ = notify.Banner("GitHub Usage", "All incidents resolved")
 	}
 
 	lastOngoing = cur

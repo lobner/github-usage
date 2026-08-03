@@ -52,6 +52,10 @@ const (
 	maxIncidentItems    = 6
 	blinkInterval       = 700 * time.Millisecond
 	statusPageURL       = "https://www.githubstatus.com"
+	// Where premium-request consumption is shown for a personal account. A seat
+	// billed through an organisation reports its overage under that org's
+	// billing instead, but a user's own usage still appears here.
+	usagePageURL = "https://github.com/settings/billing/usage"
 
 	appName = "GitHub Usage"
 	repoURL = "https://github.com/lobner/github-usage"
@@ -131,9 +135,9 @@ func onReady() {
 	mCreditsReset.Hide()
 	systray.AddSeparator()
 
-	mStatus = systray.AddMenuItem("Checking GitHub status…", "")
-	mStatus.Disable()
-	systray.AddSeparator()
+	// Clickable, like claude-usage's: the headline row is how you get to the
+	// status page, so there is no separate menu item for it.
+	mStatus = systray.AddMenuItem("Service status: checking…", "Open githubstatus.com")
 
 	// Pre-allocate a fixed pool of incident rows (systray can't reliably remove
 	// items), shown/hidden and relabelled on each poll.
@@ -149,7 +153,7 @@ func onReady() {
 	}
 	systray.AddSeparator()
 
-	mOpenPage := systray.AddMenuItem("Open GitHub Status page", "Open githubstatus.com")
+	mOpenPage := systray.AddMenuItem("Open usage page", "Open github.com/settings/billing/usage")
 	mRefresh := systray.AddMenuItem("Refresh now", "Check the feed immediately")
 	mLastCheck = systray.AddMenuItem("", "")
 	mLastCheck.Disable()
@@ -167,6 +171,11 @@ func onReady() {
 
 	go func() {
 		for range mOpenPage.ClickedCh {
+			openURL(usagePageURL)
+		}
+	}()
+	go func() {
+		for range mStatus.ClickedCh {
 			openURL(statusPageURL)
 		}
 	}()
@@ -546,6 +555,7 @@ func updateMenu(ongoing []feed.Incident) {
 	if len(ongoing) == 0 {
 		systray.SetTooltip("GitHub Usage — all systems operational")
 		mStatus.SetTitle("✓  All systems operational")
+		mStatus.SetTooltip("githubstatus.com reports all systems operational")
 		for _, mi := range mIncidents {
 			mi.Hide()
 		}
@@ -562,6 +572,7 @@ func updateMenu(ongoing []feed.Incident) {
 		status += fmt.Sprintf("  (showing %d)", maxIncidentItems)
 	}
 	mStatus.SetTitle(status)
+	mStatus.SetTooltip("githubstatus.com — click to open the status page")
 
 	for i, mi := range mIncidents {
 		if i >= len(ongoing) {

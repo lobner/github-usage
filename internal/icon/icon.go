@@ -1,11 +1,16 @@
 // Package icon renders the menu-bar icons programmatically (no binary assets).
 //
-// Two states:
+// Three states:
 //   - BaseTemplatePNG: a filled squircle, monochrome. Used via
 //     systray.SetTemplateIcon so macOS tints it to match a light or dark menu bar.
-//   - IncidentPNG: the same squircle plus a red notification dot. Because a
-//     coloured (non-template) icon does NOT auto-adapt, the squircle gets a thin
-//     white halo so its outline stays visible on both light and dark menu bars.
+//   - AlertPNG: the squircle filled solid red. Alternated with the base icon to
+//     blink while an incident is unacknowledged.
+//   - IncidentPNG: the base squircle plus a red notification dot. Shown once the
+//     user has opened the menu and the blinking has stopped.
+//
+// Because a coloured (non-template) icon does NOT auto-adapt, the two red icons
+// get a thin white halo so their outline stays visible on light and dark menu
+// bars alike.
 package icon
 
 import (
@@ -96,7 +101,15 @@ func BaseTemplatePNG() []byte {
 	return encode(img)
 }
 
-// IncidentPNG returns the alert icon: haloed squircle + red notification dot.
+// AlertPNG returns the blink icon: a solid red squircle.
+func AlertPNG() []byte {
+	img := image.NewNRGBA(image.Rect(0, 0, size, size))
+	drawLayer(img, squircle(17.5, 9), colHalo) // white outline (visible on dark bars)
+	drawLayer(img, squircle(16, 8), colRed)    // solid red body
+	return encode(img)
+}
+
+// IncidentPNG returns the acknowledged icon: haloed squircle + red notification dot.
 func IncidentPNG() []byte {
 	img := image.NewNRGBA(image.Rect(0, 0, size, size))
 	drawLayer(img, squircle(17.5, 9), colHalo) // white outline (visible on dark bars)

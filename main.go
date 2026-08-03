@@ -1,7 +1,8 @@
 // Command githubstatus is a macOS menu-bar app that watches GitHub's incident
-// feed. While an incident is ongoing it shows the incident name as menu-bar
-// title text (Outlook-style) and a red dot on the icon (Teams-style), and posts
-// a Notification Centre banner when a new incident first appears.
+// feed. When an incident appears the menu-bar square blinks red and a
+// Notification Centre banner is posted. Opening the menu acknowledges the
+// incident: the blinking stops, the icon settles on a red notification dot, and
+// the incident titles can be read (and clicked) in the menu itself.
 //
 // Environment overrides:
 //
@@ -29,7 +30,7 @@ import (
 const (
 	defaultPollInterval = 60 * time.Second
 	maxIncidentItems    = 6
-	titleMaxLen         = 48
+	blinkInterval       = 700 * time.Millisecond
 	statusPageURL       = "https://www.githubstatus.com"
 )
 
@@ -38,6 +39,7 @@ var (
 	pollInterval = pollIntervalFromEnv()
 
 	baseIcon     []byte
+	alertIcon    []byte
 	incidentIcon []byte
 
 	mStatus    *systray.MenuItem
@@ -45,6 +47,11 @@ var (
 	mLastCheck *systray.MenuItem
 
 	refreshNow = make(chan struct{}, 1)
+
+	// Icon state, owned by iconLoop. The poll goroutine reports what the feed
+	// says; opening the menu acknowledges an alert.
+	iconUpdates = make(chan iconUpdate, 1)
+	iconAck     = make(chan struct{}, 1)
 
 	// Poll-goroutine-only state.
 	lastOngoing = map[string]bool{}
@@ -62,6 +69,7 @@ func main() {
 
 func onReady() {
 	baseIcon = icon.BaseTemplatePNG()
+	alertIcon = icon.AlertPNG()
 	incidentIcon = icon.IncidentPNG()
 
 	systray.SetTemplateIcon(baseIcon, baseIcon)
@@ -107,10 +115,88 @@ func onReady() {
 		systray.Quit()
 	}()
 
+	// Opening the menu means the user has seen the alert: stop the blinking.
+	go func() {
+		for range systray.TrayOpenedCh {
+			select {
+			case iconAck <- struct{}{}:
+			default: // an acknowledgement is already queued
+			}
+		}
+	}()
+
+	go iconLoop()
 	go pollLoop()
 }
 
 func onExit() {}
+
+// iconUpdate is what the latest poll saw: whether anything is ongoing, and
+// whether any of it is new since the previous poll.
+type iconUpdate struct{ ongoing, isNew bool }
+
+type iconState int
+
+const (
+	stateOK    iconState = iota // no incidents: plain template icon
+	stateAlert                  // unacknowledged incident: blinking red square
+	stateAck                    // seen by the user: static red notification dot
+)
+
+// iconLoop owns the menu-bar icon. It is the only writer, so the blink can never
+// race with a state change and leave the wrong icon on screen.
+func iconLoop() {
+	st := stateOK
+	red := false
+
+	setRed := func(on bool) {
+		red = on
+		if on {
+			systray.SetIcon(alertIcon)
+		} else {
+			systray.SetTemplateIcon(baseIcon, baseIcon)
+		}
+	}
+	apply := func(s iconState) {
+		st = s
+		switch s {
+		case stateOK:
+			setRed(false)
+		case stateAlert:
+			setRed(true) // start the blink lit, so it is seen immediately
+		case stateAck:
+			red = false
+			systray.SetIcon(incidentIcon)
+		}
+	}
+
+	t := time.NewTicker(blinkInterval)
+	defer t.Stop()
+
+	for {
+		select {
+		case u := <-iconUpdates:
+			switch {
+			case !u.ongoing:
+				if st != stateOK {
+					apply(stateOK)
+				}
+			case u.isNew || st == stateOK:
+				// A fresh incident re-arms the blink even if an earlier one
+				// has already been acknowledged.
+				apply(stateAlert)
+			}
+		case <-iconAck:
+			if st == stateAlert {
+				apply(stateAck)
+			}
+		case <-t.C:
+			if st == stateAlert {
+				setRed(!red)
+			}
+		}
+	}
+}
 
 func pollLoop() {
 	check() // immediate first check
@@ -152,12 +238,15 @@ func check() {
 	}
 
 	ongoing := feed.Ongoing(incidents)
-	updateUI(ongoing)
-	notifyNew(ongoing)
+	updateMenu(ongoing)
+	isNew := notifyNew(ongoing)
+	iconUpdates <- iconUpdate{ongoing: len(ongoing) > 0, isNew: isNew}
 	mLastCheck.SetTitle("Last checked " + now.Format("15:04:05"))
 }
 
-func updateUI(ongoing []feed.Incident) {
+// updateMenu relabels the menu contents. The menu-bar icon itself is left to
+// iconLoop, which blinks it until the user opens the menu.
+func updateMenu(ongoing []feed.Incident) {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -166,8 +255,6 @@ func updateUI(ongoing []feed.Incident) {
 	}
 
 	if len(ongoing) == 0 {
-		systray.SetTemplateIcon(baseIcon, baseIcon)
-		systray.SetTitle("")
 		systray.SetTooltip("GitHub Status — all systems operational")
 		mStatus.SetTitle("✓  All systems operational")
 		for _, mi := range mIncidents {
@@ -176,8 +263,6 @@ func updateUI(ongoing []feed.Incident) {
 		return
 	}
 
-	systray.SetIcon(incidentIcon)
-	systray.SetTitle("GitHub: " + truncate(ongoing[0].Title, titleMaxLen))
 	systray.SetTooltip(fmt.Sprintf("GitHub Status — %d ongoing incident(s)", len(ongoing)))
 
 	status := fmt.Sprintf("●  %d ongoing incidents", len(ongoing))
@@ -207,27 +292,31 @@ func updateUI(ongoing []feed.Incident) {
 }
 
 // notifyNew fires a banner for each incident that has appeared since the last
-// poll. The first poll only establishes a baseline (no banner), so launching the
-// app during an existing incident does not spam notifications.
-func notifyNew(ongoing []feed.Incident) {
+// poll, and reports whether there was any. The first poll only establishes a
+// baseline (no banner), so launching the app during an existing incident does
+// not spam notifications — the icon still blinks for it.
+func notifyNew(ongoing []feed.Incident) bool {
 	cur := make(map[string]bool, len(ongoing))
 	for _, inc := range ongoing {
 		cur[inc.ID] = true
 	}
 
-	if !firstRun {
-		for _, inc := range ongoing {
-			if !lastOngoing[inc.ID] {
+	isNew := false
+	for _, inc := range ongoing {
+		if !lastOngoing[inc.ID] {
+			isNew = true
+			if !firstRun {
 				_ = notify.Banner("GitHub incident", inc.Title)
 			}
 		}
-		if len(cur) == 0 && len(lastOngoing) > 0 {
-			_ = notify.Banner("GitHub Status", "All incidents resolved")
-		}
+	}
+	if !firstRun && len(cur) == 0 && len(lastOngoing) > 0 {
+		_ = notify.Banner("GitHub Status", "All incidents resolved")
 	}
 
 	lastOngoing = cur
 	firstRun = false
+	return isNew
 }
 
 func triggerRefresh() {

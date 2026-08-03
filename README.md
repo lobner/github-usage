@@ -1,12 +1,14 @@
 # GitHub Status — macOS menu-bar tracker
 
 A tiny menu-bar app that watches GitHub's incident feed and surfaces ongoing
-incidents the way Outlook and Teams do:
+incidents without ever taking up menu-bar width:
 
-- **All clear** → a plain monochrome icon, no title text (stays out of the way).
-- **Ongoing incident** → a **red dot** on the icon (Teams-style) **and** the
-  incident name as menu-bar title text (Outlook-style), e.g.
-  `GitHub: Disruption with Claude Opus 4.7`.
+- **All clear** → a plain monochrome square (stays out of the way).
+- **New incident** → the square **blinks red** until you look at it.
+- **Acknowledged** → opening the menu stops the blinking and leaves a **red dot**
+  on the icon (Teams-style) for as long as the incident is ongoing. The incident
+  names are read in the dropdown itself. A later, different incident starts the
+  blinking again.
 - A **Notification Centre banner** when a *new* incident first appears while the
   app is running.
 
@@ -62,7 +64,7 @@ Either:
 ```
 main.go                 systray wiring, poll loop, menu, notifications
 internal/feed/          fetch (conditional GET) + parse Atom + Ongoing() filter
-internal/icon/          programmatic icons (base template + red-dot incident)
+internal/icon/          programmatic icons (base template, red blink, red-dot incident)
 internal/notify/        Notification Centre banner via osascript
 build/                  Info.plist, make-app.sh, LaunchAgent plist
 third_party/systray/    vendored fork of fyne.io/systray (see below)
@@ -90,7 +92,7 @@ ICON_DUMP_DIR=/tmp go test -tags dumpicons ./internal/icon # write the icons to 
 ## Notes & possible extensions
 
 - The first poll only establishes a baseline, so launching during an existing
-  incident shows the dot/title but does not fire a banner; banners fire for
+  incident blinks the icon but does not fire a banner; banners fire for
   incidents that appear afterwards.
 - Severity-based colouring (minor/major/critical) and per-component filtering
   (alert only when e.g. Actions or Copilot is affected) would need GitHub's JSON

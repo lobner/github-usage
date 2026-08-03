@@ -19,6 +19,7 @@ func TestDump(t *testing.T) {
 	}
 	for name, data := range map[string][]byte{
 		"icon-base.png":     BaseTemplatePNG(),
+		"icon-alert.png":    AlertPNG(),
 		"icon-incident.png": IncidentPNG(),
 	} {
 		p := filepath.Join(dir, name)

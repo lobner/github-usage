@@ -60,7 +60,7 @@ The icon is dropped entirely only once the incident is over.
 - A **Notification Centre banner** when a *new* incident first appears while the
   app is running.
 
-<img width="570" alt="The dropdown: premium-request credits, one ongoing incident with its newest update, and Launch at Login" src="docs/menu.png" />
+<img width="760" alt="The menu bar showing 6%, and the dropdown: premium-request credits, service status, Launch at Login and the About row" src="docs/menu.png" />
 
 The dropdown lists each ongoing incident as **what its newest update actually
 says** — `Update — We are experiencing degraded availability for chat & agent

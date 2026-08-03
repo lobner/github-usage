@@ -18,9 +18,8 @@ func TestDump(t *testing.T) {
 		dir = "."
 	}
 	for name, data := range map[string][]byte{
-		"icon-base.png":     BaseTemplatePNG(),
-		"icon-alert.png":    AlertPNG(),
-		"icon-incident.png": IncidentPNG(),
+		"icon-blank.png":   BlankPNG(),
+		"icon-red-dot.png": RedDotPNG(),
 	} {
 		p := filepath.Join(dir, name)
 		if err := os.WriteFile(p, data, 0o644); err != nil {

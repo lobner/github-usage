@@ -5,8 +5,13 @@ premium-request allowance** is spent, and it tells you when **GitHub is having a
 incident**.
 
 ```
- [icon] 6%          ← premium requests used this period; the icon blinks red on an incident
+6%        ← premium requests used this period; text only, nothing else
+●  6%     ← blinking red: GitHub has an ongoing incident
 ```
+
+Nothing but the number when all is well, matching the sibling
+[claude-usage](https://github.com/lobner/claude-usage) app, so the two read as a
+pair and neither shouts for attention until something is wrong.
 
 ## Copilot premium requests
 
@@ -42,12 +47,16 @@ name alone works in a terminal and fails in the built app.
 
 Ongoing incidents are signalled in the icon, never by growing the menu bar:
 
-- **All clear** → a plain monochrome square (stays out of the way).
-- **New incident** → the square **blinks red** until you look at it.
-- **Acknowledged** → opening the menu stops the blinking and leaves a **red dot**
-  on the icon (Teams-style) for as long as the incident is ongoing. The incident
-  names are read in the dropdown itself. A later, different incident starts the
-  blinking again.
+- **All clear** → no icon at all, just the percentage (stays out of the way).
+- **New incident** → a **red dot appears and blinks** until you look at it.
+- **Acknowledged** → opening the menu stops the blinking and leaves the **dot
+  solid** for as long as the incident is ongoing. The incident's newest update is
+  read in the dropdown itself. A later, different incident starts the blinking
+  again.
+
+While blinking, the off phase is a transparent image of the same size rather than
+no image at all, so the percentage stays put instead of shifting twice a second.
+The icon is dropped entirely only once the incident is over.
 - A **Notification Centre banner** when a *new* incident first appears while the
   app is running.
 
@@ -168,7 +177,7 @@ To set it up by hand instead:
 main.go                 systray wiring, poll loop, menu, notifications
 internal/credits/       Copilot premium-request quota from copilot_internal/user
 internal/feed/          fetch (conditional GET) + parse Atom + Ongoing() filter
-internal/icon/          programmatic icons (base template, red blink, red-dot incident)
+internal/icon/          the red incident dot, drawn programmatically (no binary assets)
 internal/login/         open-at-login registration via SMAppService (cgo)
 internal/notify/        Notification Centre banner + confirm dialog via osascript
 build/                  Info.plist, make-app.sh, LaunchAgent plist

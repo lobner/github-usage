@@ -57,15 +57,18 @@ const (
 	incidentLabelMaxLen = 90
 )
 
+// noIcon is deliberately undecodable image data: systray has no "remove the
+// icon" call, but AppKit turns data it cannot decode into a nil NSImage, which
+// drops the image from the status item (leaving the title text alone).
+var noIcon = []byte{0}
+
 var (
 	feedURL      = envOr("FEED_URL", feed.DefaultURL)
 	copilotURL   = envOr("COPILOT_URL", credits.DefaultURL)
 	pollInterval = pollIntervalFromEnv()
 	alertPercent = alertPercentFromEnv()
 
-	baseIcon     []byte
-	alertIcon    []byte
-	incidentIcon []byte
+	alertIcon []byte // red circle for an ongoing incident
 
 	mCredits      *systray.MenuItem
 	mCreditsCount *systray.MenuItem
@@ -99,11 +102,9 @@ func main() {
 }
 
 func onReady() {
-	baseIcon = icon.BaseTemplatePNG()
-	alertIcon = icon.AlertPNG()
-	incidentIcon = icon.IncidentPNG()
+	alertIcon = icon.RedDotPNG()
 
-	systray.SetTemplateIcon(baseIcon, baseIcon)
+	systray.SetIcon(noIcon)
 	systray.SetTitle("…")
 	systray.SetTooltip("GitHub Usage — checking…")
 
@@ -287,19 +288,21 @@ func iconLoop() {
 		if on {
 			systray.SetIcon(alertIcon)
 		} else {
-			systray.SetTemplateIcon(baseIcon, baseIcon)
+			systray.SetIcon(noIcon)
 		}
 	}
 	apply := func(s iconState) {
 		st = s
 		switch s {
 		case stateOK:
-			setRed(false)
+			// All clear: drop the icon entirely, so it's text only again.
+			red = false
+			systray.SetIcon(noIcon)
 		case stateAlert:
 			setRed(true) // start the blink lit, so it is seen immediately
 		case stateAck:
 			red = false
-			systray.SetIcon(incidentIcon)
+			systray.SetIcon(alertIcon)
 		}
 	}
 

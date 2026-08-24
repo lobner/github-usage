@@ -1,12 +1,14 @@
 // Package icon renders the menu-bar dot programmatically (no binary assets).
 //
-// The app normally shows text only ("<used>%"), matching the sibling claude-usage
-// app. A red dot appears in front of it while GitHub has an ongoing incident:
+// The app shows the percentage ("<used>%"), matching the sibling claude-usage
+// app, with a red dot in front of it while GitHub has an ongoing incident. The
+// status item always carries one of these two images, so its width — and with it
+// the position of every menu-bar item to its left — never changes:
 //
 //   - RedDotPNG: the incident dot, the same size as claude-usage's. A coloured
 //     (non-template) image, so macOS keeps it red on either menu bar.
-//   - BlankPNG: the off phase of the blink — transparent, same size, so the row
-//     keeps its width.
+//   - BlankPNG: transparent, same size. Holds the slot both between blinks and
+//     while there is no incident at all.
 package icon
 
 import (
@@ -50,10 +52,11 @@ func RedDotPNG() []byte {
 	return redPNG
 }
 
-// BlankPNG returns a fully transparent image the same size as the dot. It is the
-// off phase of the blink: a same-sized invisible image keeps the icon slot
-// occupied, so the percentage stays put instead of shifting twice a second.
-// Removing the icon outright is right only when the incident is over.
+// BlankPNG returns a fully transparent image the same size as the dot. It is
+// what the status item shows whenever the dot is not lit: between blinks, and for
+// as long as there is no incident. Keeping the slot occupied is what stops the
+// percentage — and the whole menu-bar row left of it — from jumping sideways
+// twice a second while blinking, and again when an incident starts or ends.
 //
 // The result is computed once and shared, so callers must not modify the returned
 // slice.

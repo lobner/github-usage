@@ -47,16 +47,17 @@ name alone works in a terminal and fails in the built app.
 
 Ongoing incidents are signalled in the icon, never by growing the menu bar:
 
-- **All clear** → no icon at all, just the percentage (stays out of the way).
+- **All clear** → no dot, just the percentage (stays out of the way).
 - **New incident** → a **red dot appears and blinks** until you look at it.
 - **Acknowledged** → opening the menu stops the blinking and leaves the **dot
   solid** for as long as the incident is ongoing. The incident's newest update is
   read in the dropdown itself. A later, different incident starts the blinking
   again.
 
-While blinking, the off phase is a transparent image of the same size rather than
-no image at all, so the percentage stays put instead of shifting twice a second.
-The icon is dropped entirely only once the incident is over.
+The dot's slot is always there, holding a transparent image of the same size
+whenever the dot is not lit. Dropping the image instead would narrow the status
+item, dragging the percentage — and every menu-bar item to its left — sideways
+twice a second while blinking, and again whenever an incident starts or ends.
 - A **Notification Centre banner** when a *new* incident first appears while the
   app is running.
 

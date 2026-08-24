@@ -4,11 +4,11 @@
 // percentage in the menu-bar title, with the credit counts and reset date in the
 // menu (see internal/credits).
 //
-// It also watches GitHub's incident feed. When an incident appears the menu-bar
-// square blinks red and a Notification Centre banner is posted. Opening the menu
-// acknowledges the incident: the blinking stops, the icon settles on a red
-// notification dot, and each incident's newest update can be read (and clicked)
-// in the menu itself.
+// It also watches GitHub's incident feed. When an incident appears a dot in front
+// of the percentage blinks red and a Notification Centre banner is posted.
+// Opening the menu acknowledges the incident: the blinking stops, the dot settles
+// solid, and each incident's newest update can be read (and clicked) in the menu
+// itself.
 //
 // On first launch from its .app bundle it offers to open at login, registering
 // itself as a login item if accepted (see internal/login).
@@ -74,11 +74,6 @@ var (
 	buildDate = ""
 )
 
-// noIcon is deliberately undecodable image data: systray has no "remove the
-// icon" call, but AppKit turns data it cannot decode into a nil NSImage, which
-// drops the image from the status item (leaving the title text alone).
-var noIcon = []byte{0}
-
 var (
 	feedURL      = envOr("FEED_URL", feed.DefaultURL)
 	copilotURL   = envOr("COPILOT_URL", credits.DefaultURL)
@@ -121,7 +116,9 @@ func main() {
 func onReady() {
 	alertIcon = icon.RedDotPNG()
 
-	systray.SetIcon(noIcon)
+	// The icon slot is occupied from the start, blank until there is something
+	// to show, so the percentage never moves — see icon.BlankPNG.
+	systray.SetIcon(icon.BlankPNG())
 	systray.SetTitle("…")
 	systray.SetTooltip("GitHub Usage — checking…")
 
@@ -330,8 +327,8 @@ type iconUpdate struct{ ongoing, isNew bool }
 type iconState int
 
 const (
-	stateOK    iconState = iota // no incidents: plain template icon
-	stateAlert                  // unacknowledged incident: blinking red square
+	stateOK    iconState = iota // no incidents: the dot slot is there but empty
+	stateAlert                  // unacknowledged incident: blinking red dot
 	stateAck                    // seen by the user: static red notification dot
 )
 
@@ -346,20 +343,23 @@ func iconLoop() {
 		if on {
 			systray.SetIcon(alertIcon)
 		} else {
-			systray.SetIcon(noIcon)
+			systray.SetIcon(icon.BlankPNG())
 		}
 	}
 	apply := func(s iconState) {
 		st = s
 		switch s {
 		case stateOK:
-			// All clear: drop the icon entirely, so it's text only again.
+			// All clear: blank the dot, but keep the slot. Dropping the image
+			// narrows the status item, which drags every menu-bar item to its
+			// left sideways — so the row is steady only if the width never
+			// changes, incident or not.
 			red = false
-			systray.SetIcon(noIcon)
+			systray.SetIcon(icon.BlankPNG())
 		case stateAlert:
 			setRed(true) // start the blink lit, so it is seen immediately
 		case stateAck:
-			red = false
+			red = true
 			systray.SetIcon(alertIcon)
 		}
 	}

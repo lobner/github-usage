@@ -4,10 +4,8 @@
 # Built menu-bar app bundle (produced by build/make-app.sh)
 *.app/
 
-# Compiled binaries
-/githubusage
-*.test
-*.out
+# Cargo build output
+/target
 
 # Local Claude Code settings
 .claude/

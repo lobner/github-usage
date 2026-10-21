@@ -1,0 +1,10 @@
+# Path-based labels, applied by actions/labeler. Every label here should also
+# sit in a category of .github/release.yml, or its PRs land under "Other".
+# `gh cut-release doctor` checks that.
+Documentation only:
+ - changed-files:
+    - any-glob-to-all-files: '**/*.md'
+
+github_actions:
+ - changed-files:
+    - any-glob-to-any-file: '.github/**'

@@ -54,10 +54,13 @@ Ongoing incidents are signalled in the icon, never by growing the menu bar:
   read in the dropdown itself. A later, different incident starts the blinking
   again.
 
-The dot's slot is always there, holding a transparent image of the same size
-whenever the dot is not lit. Dropping the image instead would narrow the status
-item, dragging the percentage — and every menu-bar item to its left — sideways
-twice a second while blinking, and again whenever an incident starts or ends.
+While an incident is ongoing, the dot's slot holds a transparent image of the
+same size in the off phase of the blink. Dropping the image instead would narrow
+the status item and drag the percentage — and every menu-bar item to its left —
+sideways twice a second. When all is clear, there is no image at all, so the
+item is as narrow as the percentage. The row moves once when an incident starts
+and once when it ends.
+
 - A **Notification Centre banner** when a *new* incident first appears while the
   app is running.
 

@@ -128,9 +128,6 @@ fn main() {
 }
 
 fn on_ready() {
-    // The icon slot is occupied from the start, blank until there is something
-    // to show, so the percentage never moves - see icon::blank_png.
-    tray::set_icon(Some(icon::blank_png()));
     tray::set_title("…");
     tray::set_tooltip("GitHub Usage — checking…");
 
@@ -381,6 +378,9 @@ fn icon_loop() {
         if on {
             tray::set_icon(Some(icon::red_dot_png()));
         } else {
+            // The blink is off, the incident is not over: a transparent image
+            // of the same size holds the icon slot so the percentage does not
+            // move.
             tray::set_icon(Some(icon::blank_png()));
         }
     };
@@ -388,12 +388,9 @@ fn icon_loop() {
         *st = next;
         match next {
             IconState::Ok => {
-                // All clear: blank the dot, but keep the slot. Without the image
-                // the status item gets narrower, which moves every menu-bar
-                // item to its left sideways - so the row is steady only if the
-                // width never changes, incident or not.
+                // All clear: remove the icon, so it is text only again.
                 *red = false;
-                tray::set_icon(Some(icon::blank_png()));
+                tray::set_icon(None);
             }
             IconState::Alert => set_red(red, true), // start lit, so it is seen immediately
             IconState::Ack => {

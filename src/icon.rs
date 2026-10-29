@@ -31,10 +31,9 @@ pub fn red_dot_png() -> &'static [u8] {
 }
 
 /// Returns a fully transparent image the same size as the dot. The status item
-/// shows it whenever the dot is not lit: between blinks, and for as long as
-/// there is no incident. A slot that is always occupied stops the percentage -
-/// and the whole menu-bar row to its left - from jumping sideways twice a second
-/// during the blink, and again when an incident starts or ends.
+/// shows it in the off phase of the blink, so the percentage - and the whole
+/// menu-bar row to its left - does not jump sideways twice a second. When the
+/// incident ends, the icon is removed instead, so the item is text only.
 ///
 /// It is computed once and shared.
 pub fn blank_png() -> &'static [u8] {
